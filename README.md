@@ -42,6 +42,12 @@ node -e "console.log(crypto.randomBytes(32).toString('hex'))"
 npm.cmd run backend:migrations
 ```
 
+Para entrar al Admin por primera vez, crea un usuario local:
+
+```powershell
+npm.cmd exec --workspace @white-label/backend -- medusa user -e <email-admin> -p <password-admin>
+```
+
 ## Desarrollo
 
 En una terminal:
