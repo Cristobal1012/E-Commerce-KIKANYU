@@ -10,23 +10,23 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "type-check": "turbo type-check",
-    "test": "turbo test",
-    "backend:dev": "turbo dev --filter=@white-label/backend",
-    "backend:build": "turbo build --filter=@white-label/backend",
-    "backend:migrations": "turbo migrations --filter=@white-label/backend",
-    "storefront:dev": "turbo dev --filter=@white-label/storefront",
-    "storefront:build": "turbo build --filter=@white-label/storefront"
+    "dev": "npm.cmd run dev --workspaces --if-present",
+    "build": "npm.cmd run build --workspaces --if-present",
+    "lint": "npm.cmd run lint --workspaces --if-present",
+    "type-check": "npm.cmd run type-check --workspaces --if-present",
+    "test": "npm.cmd run test --workspaces --if-present",
+    "backend:dev": "npm.cmd run dev --workspace @white-label/backend",
+    "backend:build": "npm.cmd run build --workspace @white-label/backend",
+    "backend:migrations": "npm.cmd run migrations --workspace @white-label/backend",
+    "storefront:dev": "npm.cmd run dev --workspace @white-label/storefront",
+    "storefront:build": "npm.cmd run build --workspace @white-label/storefront"
   },
   "devDependencies": {
     "@medusajs/eslint-plugin": "2.21.2",
+    "@medusajs/medusa": "^2.21.2",
     "eslint": "^9.39.4",
     "jiti": "^2.7.0",
     "prettier": "^3.6.2",
-    "turbo": "^2.6.3",
     "typescript": "^5.9.3"
   },
   "overrides": {
@@ -36,5 +36,12 @@
     "@eslint/eslintrc": {
       "ajv": "^6.12.4"
     }
+  },
+  "allowScripts": {
+    "@swc/core": true,
+    "esbuild": true,
+    "protobufjs": true,
+    "unrs-resolver": true,
+    "@medusajs/telemetry": true
   }
 }

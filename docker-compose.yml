@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: ecommerce-esencias-postgres
     restart: unless-stopped
     environment:
@@ -8,14 +8,15 @@ services:
       POSTGRES_USER: medusa_user
       POSTGRES_PASSWORD: medusa_password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U medusa_user -d medusa_backend"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 60s
 
   redis:
     image: redis:7-alpine

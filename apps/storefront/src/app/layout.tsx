@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { brandConfig } from "@config/brand.config";
 import "./globals.css";
 
@@ -30,9 +30,9 @@ const brandCssVariables = {
   "--brand-accent": brandConfig.theme.colors.accent,
   "--font-brand-sans": brandConfig.theme.fonts.sans,
   "--font-brand-serif": brandConfig.theme.fonts.serif,
-} satisfies CSSProperties & Record<`--${string}`, string>;
+} as CSSProperties;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="es-CL"
