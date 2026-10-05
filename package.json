@@ -18,6 +18,7 @@
     "backend:dev": "npm.cmd run dev --workspace @white-label/backend",
     "backend:build": "npm.cmd run build --workspace @white-label/backend",
     "backend:migrations": "npm.cmd run migrations --workspace @white-label/backend",
+    "backend:seed:catalog": "npm.cmd run seed:catalog --workspace @white-label/backend",
     "storefront:dev": "npm.cmd run dev --workspace @white-label/storefront",
     "storefront:build": "npm.cmd run build --workspace @white-label/storefront"
   },

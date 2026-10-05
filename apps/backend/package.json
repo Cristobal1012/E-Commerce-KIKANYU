@@ -17,6 +17,7 @@
     "start": "medusa start",
     "dev": "medusa develop",
     "migrations": "medusa db:migrate",
+    "seed:catalog": "medusa exec ./src/scripts/seed-catalog.ts",
     "lint": "medusa lint",
     "type-check": "tsc --noEmit",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",

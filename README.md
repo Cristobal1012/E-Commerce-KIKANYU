@@ -40,7 +40,11 @@ node -e "console.log(crypto.randomBytes(32).toString('hex'))"
 ```powershell
 & 'C:\Users\crist\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe' compose up -d
 npm.cmd run backend:migrations
+npm.cmd run backend:seed:catalog
 ```
+
+El seed de catálogo imprime una publishable API key. Cópiala en
+`apps\storefront\.env.local` como `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY`.
 
 Para entrar al Admin por primera vez, crea un usuario local:
 
@@ -75,6 +79,19 @@ npm.cmd run lint
 npm.cmd run type-check
 npm.cmd run build
 ```
+
+## Catálogo de prueba
+
+Fase 1 agrega familias aromáticas como categorías de producto en Medusa y
+productos genéricos marcados como dato de prueba. Para recargar esos datos:
+
+```powershell
+npm.cmd run backend:seed:catalog
+```
+
+El storefront lee productos desde la Store API de Medusa, muestra filtros
+compartibles en la URL (`?familia=citrica,floral`) y orden por novedades,
+nombre o precio menor. Buscador y carrito quedan fuera de esta fase.
 
 ## White-label
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" role="img" aria-label="Dato de prueba de esencia floral">
+  <rect width="960" height="720" fill="#fbfaf7"/>
+  <circle cx="232" cy="520" r="118" fill="#d8b26e" opacity=".22"/>
+  <circle cx="724" cy="170" r="126" fill="#315f52" opacity=".14"/>
+  <rect x="366" y="160" width="228" height="420" rx="34" fill="#ffffff" stroke="#ded8ce" stroke-width="8"/>
+  <rect x="415" y="118" width="130" height="70" rx="18" fill="#315f52"/>
+  <rect x="396" y="292" width="168" height="124" rx="12" fill="#f6dfe8"/>
+  <circle cx="480" cy="354" r="18" fill="#d8b26e"/>
+  <circle cx="480" cy="319" r="25" fill="#ffffff"/>
+  <circle cx="515" cy="354" r="25" fill="#ffffff"/>
+  <circle cx="480" cy="389" r="25" fill="#ffffff"/>
+  <circle cx="445" cy="354" r="25" fill="#ffffff"/>
+  <text x="480" y="640" fill="#6f6a61" font-family="Arial, Helvetica, sans-serif" font-size="28" text-anchor="middle">Dato de prueba</text>
+</svg>
