@@ -4,10 +4,13 @@ import { brandConfig } from "@config/brand.config"
 import type { CatalogFamily, CatalogProduct } from "@/lib/catalog"
 import { catalogText } from "@/lib/catalog-text"
 import { formatClp } from "@/lib/format"
+import { SearchBox } from "@/components/catalog/search-box"
 
 type CatalogShellProps = {
   families: CatalogFamily[]
   products: CatalogProduct[]
+  searchProducts: CatalogProduct[]
+  query: string
   selectedFamilies: string[]
   sort: "newest" | "name" | "price"
 }
@@ -21,6 +24,8 @@ const sortOptions = [
 export function CatalogShell({
   families,
   products,
+  searchProducts,
+  query,
   selectedFamilies,
   sort,
 }: CatalogShellProps) {
@@ -47,13 +52,26 @@ export function CatalogShell({
                 {catalogText.description}
               </p>
             </div>
-            <SortLinks selectedFamilies={selectedFamilies} sort={sort} />
+            <SortLinks
+              query={query}
+              selectedFamilies={selectedFamilies}
+              sort={sort}
+            />
+          </div>
+          <div className="mt-6">
+            <SearchBox
+              products={searchProducts}
+              query={query}
+              selectedFamilies={selectedFamilies}
+              sort={sort}
+            />
           </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
           <FamilyFilters
             families={families}
+            query={query}
             selectedFamilies={selectedFamilies}
             sort={sort}
           />
@@ -85,10 +103,12 @@ export function CatalogErrorState() {
 
 function FamilyFilters({
   families,
+  query,
   selectedFamilies,
   sort,
 }: {
   families: CatalogFamily[]
+  query: string
   selectedFamilies: string[]
   sort: "newest" | "name" | "price"
 }) {
@@ -99,7 +119,7 @@ function FamilyFilters({
         <FilterLink
           active={selectedFamilies.length === 0}
           count={families.reduce((total, family) => total + family.count, 0)}
-          href={buildCatalogHref([], sort)}
+          href={buildCatalogHref([], sort, query)}
           label={catalogText.allFamilies}
         />
         {families.map((family) => {
@@ -109,7 +129,7 @@ function FamilyFilters({
             <FilterLink
               active={selectedFamilies.includes(family.handle)}
               count={family.count}
-              href={buildCatalogHref(nextFamilies, sort)}
+              href={buildCatalogHref(nextFamilies, sort, query)}
               key={family.id}
               label={family.name}
             />
@@ -151,9 +171,11 @@ function FilterLink({
 }
 
 function SortLinks({
+  query,
   selectedFamilies,
   sort,
 }: {
+  query?: string
   selectedFamilies: string[]
   sort: "newest" | "name" | "price"
 }) {
@@ -171,7 +193,7 @@ function SortLinks({
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border bg-surface text-foreground hover:border-primary",
           ].join(" ")}
-          href={buildCatalogHref(selectedFamilies, option.value)}
+          href={buildCatalogHref(selectedFamilies, option.value, query ?? "")}
           key={option.value}
         >
           {option.label}
@@ -249,7 +271,8 @@ function toggleFamily(currentFamilies: string[], family: string) {
 
 function buildCatalogHref(
   families: string[],
-  sort: "newest" | "name" | "price"
+  sort: "newest" | "name" | "price",
+  query: string
 ) {
   const params = new URLSearchParams()
 
@@ -259,6 +282,10 @@ function buildCatalogHref(
 
   if (sort !== "newest") {
     params.set("orden", sort)
+  }
+
+  if (query.trim()) {
+    params.set("q", query.trim())
   }
 
   const queryString = params.toString()

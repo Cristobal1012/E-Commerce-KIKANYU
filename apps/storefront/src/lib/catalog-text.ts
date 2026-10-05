@@ -9,10 +9,16 @@ export const catalogText = {
   sortNewest: "Novedades",
   sortName: "Nombre",
   sortPrice: "Precio menor",
+  searchLabel: "Buscar productos",
+  searchPlaceholder: "Buscar por nombre, familia, notas o descripcion",
+  searchSubmit: "Buscar",
+  searchLoading: "Buscando...",
+  searchNoFamily: "Familia por configurar",
+  searchNoSuggestions: "Sin sugerencias para esta busqueda",
   sampleBadge: "Dato de prueba",
   emptyTitle: "No hay productos para esos filtros",
   emptyDescription:
-    "Prueba con otra familia aromática o limpia los filtros desde la URL.",
+    "Prueba con otra busqueda, cambia la familia aromatica o limpia los filtros.",
   errorTitle: "No se pudo cargar el catálogo",
   errorDescription:
     "Revisa que Medusa este levantado, que el seed se haya ejecutado y que la publishable key este configurada.",

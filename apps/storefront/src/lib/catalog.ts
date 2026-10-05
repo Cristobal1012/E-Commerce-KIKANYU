@@ -1,3 +1,5 @@
+import { productSearchAdapter } from "@/lib/search"
+
 export type CatalogFamily = {
   id: string
   name: string
@@ -98,6 +100,7 @@ const categoryFields = ["id", "name", "handle", "description", "rank"].join(",")
 
 export async function getCatalogPageData(params: {
   familyHandles: string[]
+  query: string
   sort: CatalogSort
 }) {
   const regionId = await getChileRegionId()
@@ -110,16 +113,21 @@ export async function getCatalogPageData(params: {
     .filter((family) => params.familyHandles.includes(family.handle))
     .map((family) => family.id)
 
-  const filteredProducts =
+  const familyFilteredProducts =
     selectedFamilyIds.length === 0
       ? products
       : products.filter((product) =>
           product.family ? selectedFamilyIds.includes(product.family.id) : false
         )
+  const filteredProducts = productSearchAdapter.search(
+    familyFilteredProducts,
+    params.query
+  )
 
   return {
     families: addFamilyCounts(families, products),
     products: sortProducts(filteredProducts, params.sort),
+    searchProducts: sortProducts(familyFilteredProducts, params.sort),
   }
 }
 
@@ -160,6 +168,12 @@ export function parseSortParam(value: string | string[] | undefined): CatalogSor
   }
 
   return "newest"
+}
+
+export function parseSearchParam(value: string | string[] | undefined) {
+  const rawValue = Array.isArray(value) ? value[0] : value
+
+  return rawValue?.trim() ?? ""
 }
 
 async function getFamilies(): Promise<CatalogFamily[]> {
