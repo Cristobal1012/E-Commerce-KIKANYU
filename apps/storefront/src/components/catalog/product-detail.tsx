@@ -3,7 +3,7 @@ import Link from "next/link"
 import { brandConfig } from "@config/brand.config"
 import type { CatalogProduct } from "@/lib/catalog"
 import { catalogText } from "@/lib/catalog-text"
-import { formatClp } from "@/lib/format"
+import { ProductPurchasePanel } from "@/components/cart/product-purchase-panel"
 
 type ProductDetailProps = {
   product: CatalogProduct
@@ -52,23 +52,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
               {product.description}
             </p>
 
-            <section className="mt-8 border-y border-border py-5">
-              <h2 className="text-sm font-semibold uppercase text-muted">
-                {catalogText.variantsTitle}
-              </h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {product.variants.map((variant) => (
-                  <div className="border border-border bg-surface p-4" key={variant.id}>
-                    <p className="font-semibold">{variant.title}</p>
-                    <p className="mt-2 text-sm text-muted">
-                      {variant.price
-                        ? formatClp(variant.price)
-                        : "Precio por configurar"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <ProductPurchasePanel product={product} />
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase text-muted">

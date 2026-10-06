@@ -1,13 +1,17 @@
 import type { ExecArgs } from "@medusajs/framework/types"
 import {
+  batchInventoryItemLevelsWorkflow,
   createApiKeysWorkflow,
   createProductCategoriesWorkflow,
   createProductsWorkflow,
   createRegionsWorkflow,
   createSalesChannelsWorkflow,
+  createStockLocationsWorkflow,
+  linkSalesChannelsToStockLocationWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
   updateProductCategoriesWorkflow,
   updateProductsWorkflow,
+  updateProductVariantsWorkflow,
 } from "@medusajs/core-flows"
 import {
   ContainerRegistrationKeys,
@@ -63,11 +67,30 @@ type ExistingEntity = {
   name?: string | null
 }
 
+type ExistingVariant = {
+  id: string
+  sku?: string | null
+  manage_inventory?: boolean | null
+  inventory_items?: {
+    inventory_item_id?: string | null
+    inventory?: {
+      id: string
+      location_levels?: {
+        id: string
+        location_id: string
+        stocked_quantity?: number | null
+      }[] | null
+    } | null
+  }[] | null
+}
+
 const SAMPLE_MARKER = "phase-1-sample-catalog"
 const SAMPLE_CREATED_BY = "seed:phase-1-catalog"
 const DEFAULT_SALES_CHANNEL_NAME = "Storefront de prueba"
 const DEFAULT_REGION_NAME = "Chile - prueba"
 const DEFAULT_PUBLISHABLE_KEY_TITLE = "Storefront local de prueba"
+const DEFAULT_STOCK_LOCATION_NAME = "Bodega local de prueba"
+const DEFAULT_VARIANT_STOCK = 12
 
 const aromaticFamilies: SeedCategory[] = [
   {
@@ -255,15 +278,17 @@ export default async function seedCatalog({ container }: ExecArgs) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const query = container.resolve<QueryGraph>(ContainerRegistrationKeys.QUERY)
 
-  logger.info("Seed catálogo Fase 1: iniciando datos de prueba")
+  logger.info("Seed catalogo Fase 2: iniciando datos de prueba")
 
   const salesChannel = await ensureSalesChannel(container, query)
+  const stockLocation = await ensureStockLocation(container, query, salesChannel.id)
   await ensureRegion(container, query)
   await ensurePublishableKey(container, salesChannel.id)
   const categoriesByHandle = await ensureCategories(container, query)
   await ensureProducts(container, query, categoriesByHandle, salesChannel.id)
+  await ensureProductInventory(container, query, stockLocation.id)
 
-  logger.info("Seed catálogo Fase 1: listo")
+  logger.info("Seed catalogo Fase 2: listo")
 }
 
 async function ensureSalesChannel(
@@ -298,6 +323,51 @@ async function ensureSalesChannel(
   })
 
   return result[0]
+}
+
+async function ensureStockLocation(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  salesChannelId: string
+) {
+  const { data } = await query.graph<ExistingEntity>({
+    entity: "stock_location",
+    fields: ["id", "name"],
+    filters: {
+      name: DEFAULT_STOCK_LOCATION_NAME,
+    },
+    pagination: {
+      skip: 0,
+      take: 1,
+    },
+  })
+
+  const stockLocation =
+    data[0] ??
+    (
+      await createStockLocationsWorkflow(container).run({
+        input: {
+          locations: [
+            {
+              name: DEFAULT_STOCK_LOCATION_NAME,
+              metadata: {
+                sample_data: true,
+                source: SAMPLE_MARKER,
+              },
+            },
+          ],
+        },
+      })
+    ).result[0]
+
+  await linkSalesChannelsToStockLocationWorkflow(container).run({
+    input: {
+      id: stockLocation.id,
+      add: [salesChannelId],
+    },
+  })
+
+  return stockLocation
 }
 
 async function ensureRegion(container: ExecArgs["container"], query: QueryGraph) {
@@ -521,7 +591,7 @@ async function ensureProducts(
           variants: product.variants.map((variant) => ({
             title: variant.size,
             sku: variant.sku,
-            manage_inventory: false,
+            manage_inventory: true,
             allow_backorder: false,
             options: {
               Tamaño: variant.size,
@@ -545,6 +615,121 @@ async function ensureProducts(
   })
 
   await updateExistingProducts(container, query)
+}
+
+async function ensureProductInventory(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  stockLocationId: string
+) {
+  const skus = sampleProducts.flatMap((product) =>
+    product.variants.map((variant) => variant.sku)
+  )
+  const { data: variants } = await query.graph<ExistingVariant>({
+    entity: "product_variant",
+    fields: [
+      "id",
+      "sku",
+      "manage_inventory",
+      "inventory_items.inventory_item_id",
+      "inventory_items.inventory.id",
+      "inventory_items.inventory.location_levels.id",
+      "inventory_items.inventory.location_levels.location_id",
+      "inventory_items.inventory.location_levels.stocked_quantity",
+    ],
+    filters: {
+      sku: skus,
+    },
+  })
+
+  const variantsWithoutInventory = variants.filter(
+    (variant) => variant.manage_inventory !== true
+  )
+
+  if (variantsWithoutInventory.length > 0) {
+    await updateProductVariantsWorkflow(container).run({
+      input: {
+        product_variants: variantsWithoutInventory.map((variant) => ({
+          id: variant.id,
+          manage_inventory: true,
+          allow_backorder: false,
+        })),
+      },
+    })
+  }
+
+  const { data: inventoryVariants } = await query.graph<ExistingVariant>({
+    entity: "product_variant",
+    fields: [
+      "id",
+      "sku",
+      "inventory_items.inventory_item_id",
+      "inventory_items.inventory.id",
+      "inventory_items.inventory.location_levels.id",
+      "inventory_items.inventory.location_levels.location_id",
+      "inventory_items.inventory.location_levels.stocked_quantity",
+    ],
+    filters: {
+      sku: skus,
+    },
+  })
+
+  const create: {
+    inventory_item_id: string
+    location_id: string
+    stocked_quantity: number
+  }[] = []
+  const update: {
+    id: string
+    inventory_item_id: string
+    location_id: string
+    stocked_quantity: number
+  }[] = []
+
+  for (const variant of inventoryVariants) {
+    const inventoryItem = variant.inventory_items?.[0]
+    const inventoryItemId =
+      inventoryItem?.inventory_item_id ?? inventoryItem?.inventory?.id
+
+    if (!inventoryItem || !inventoryItemId) {
+      continue
+    }
+
+    const existingLevel = inventoryItem.inventory?.location_levels?.find(
+      (level) => level.location_id === stockLocationId
+    )
+
+    if (existingLevel) {
+      update.push({
+        id: existingLevel.id,
+        inventory_item_id: inventoryItemId,
+        location_id: stockLocationId,
+        stocked_quantity:
+          existingLevel.stocked_quantity && existingLevel.stocked_quantity > 0
+            ? existingLevel.stocked_quantity
+            : DEFAULT_VARIANT_STOCK,
+      })
+      continue
+    }
+
+    create.push({
+      inventory_item_id: inventoryItemId,
+      location_id: stockLocationId,
+      stocked_quantity: DEFAULT_VARIANT_STOCK,
+    })
+  }
+
+  if (create.length === 0 && update.length === 0) {
+    return
+  }
+
+  await batchInventoryItemLevelsWorkflow(container).run({
+    input: {
+      create,
+      update,
+      delete: [],
+    },
+  })
 }
 
 async function updateExistingProducts(

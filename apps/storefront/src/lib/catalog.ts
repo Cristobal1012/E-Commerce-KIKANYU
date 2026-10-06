@@ -1,4 +1,5 @@
 import { productSearchAdapter } from "@/lib/search"
+import { getChileRegionId, medusaFetch } from "@/lib/medusa"
 
 export type CatalogFamily = {
   id: string
@@ -13,6 +14,8 @@ export type CatalogVariant = {
   id: string
   title: string
   price: number | null
+  manageInventory: boolean
+  inventoryQuantity: number | null
 }
 
 export type CatalogProduct = {
@@ -44,6 +47,8 @@ type StoreProductCategory = {
 type StoreProductVariant = {
   id: string
   title: string | null
+  manage_inventory?: boolean
+  inventory_quantity?: number | null
   calculated_price?: {
     calculated_amount: number | null
   }
@@ -70,23 +75,7 @@ type StoreCategoryListResponse = {
   product_categories: StoreProductCategory[]
 }
 
-type StoreRegion = {
-  id: string
-  countries?: {
-    iso_2: string
-  }[]
-}
-
-type StoreRegionListResponse = {
-  regions: StoreRegion[]
-}
-
 type CatalogSort = "newest" | "name" | "price"
-
-const backendUrl =
-  process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL ?? "http://localhost:9000"
-
-const publishableKey = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
 
 const catalogFields = [
   "*variants.calculated_price",
@@ -94,6 +83,7 @@ const catalogFields = [
   "+metadata",
   "+variants.manage_inventory",
   "+variants.allow_backorder",
+  "+variants.inventory_quantity",
 ].join(",")
 
 const categoryFields = ["id", "name", "handle", "description", "rank"].join(",")
@@ -212,40 +202,6 @@ async function getProducts(regionId: string): Promise<CatalogProduct[]> {
   return response.products.map(normalizeProduct)
 }
 
-async function getChileRegionId() {
-  const response = await medusaFetch<StoreRegionListResponse>("/store/regions")
-  const region = response.regions.find((item) =>
-    item.countries?.some((country) => country.iso_2 === "cl")
-  )
-
-  if (!region) {
-    throw new Error("Medusa region for Chile is not configured")
-  }
-
-  return region.id
-}
-
-async function medusaFetch<TResponse>(path: string): Promise<TResponse> {
-  const headers: HeadersInit = {}
-
-  if (publishableKey) {
-    headers["x-publishable-api-key"] = publishableKey
-  }
-
-  const response = await fetch(`${backendUrl}${path}`, {
-    headers,
-    next: {
-      revalidate: 60,
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`Medusa request failed with status ${response.status}`)
-  }
-
-  return response.json() as Promise<TResponse>
-}
-
 function normalizeProduct(product: StoreProduct): CatalogProduct {
   const family = product.categories?.[0] ?? null
   const metadata = product.metadata ?? {}
@@ -269,6 +225,8 @@ function normalizeProduct(product: StoreProduct): CatalogProduct {
       id: variant.id,
       title: variant.title ?? "Variante",
       price: variant.calculated_price?.calculated_amount ?? null,
+      manageInventory: variant.manage_inventory ?? false,
+      inventoryQuantity: variant.inventory_quantity ?? null,
     })),
     notes: readNotes(metadata.notes),
     isSample: metadata.sample_data === true,

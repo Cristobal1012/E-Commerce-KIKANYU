@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { CSSProperties, ReactNode } from "react";
 import { brandConfig } from "@config/brand.config";
+import { MiniCart } from "@/components/cart/mini-cart";
+import { getCurrentCart } from "@/lib/current-cart";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,14 +34,19 @@ const brandCssVariables = {
   "--font-brand-serif": brandConfig.theme.fonts.serif,
 } as CSSProperties;
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const cart = await getCurrentCart();
+
   return (
     <html
       lang="es-CL"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       style={brandCssVariables}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <MiniCart initialCart={cart} />
+      </body>
     </html>
   );
 }
