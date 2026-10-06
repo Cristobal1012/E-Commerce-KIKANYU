@@ -93,6 +93,19 @@ El storefront lee productos desde la Store API de Medusa, muestra filtros
 compartibles en la URL (`?familia=citrica,floral`) y orden por novedades,
 nombre o precio menor. Buscador y carrito quedan fuera de esta fase.
 
+## Checkout sin pago
+
+Fase 3A agrega un checkout invitado en `http://localhost:3000/checkout`.
+El seed crea opciones de entrega nativas de Medusa para retiro, despacho RM y
+despacho resto del país, además de promociones de prueba:
+
+- `TODO10`: descuento de prueba sobre productos.
+- `TODO_ENVIO_GRATIS`: promoción automática de envío gratis sobre un monto
+  mínimo ficticio.
+
+Los datos pendientes para producción están listados en
+`docs/pendientes-produccion-fase-3a.md`.
+
 ## White-label
 
 La marca, contacto, punto de retiro, textos legales placeholder y tokens visuales viven en `config/brand.config.ts`. No hardcodees nombres de tienda, colores, logos ni datos de contacto en componentes.

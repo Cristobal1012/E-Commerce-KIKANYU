@@ -1,11 +1,17 @@
 import type { ExecArgs } from "@medusajs/framework/types"
 import {
+  batchLinksWorkflow,
   batchInventoryItemLevelsWorkflow,
   createApiKeysWorkflow,
+  createLocationFulfillmentSetWorkflow,
   createProductCategoriesWorkflow,
   createProductsWorkflow,
+  createPromotionsWorkflow,
   createRegionsWorkflow,
   createSalesChannelsWorkflow,
+  createServiceZonesWorkflow,
+  createShippingOptionsWorkflow,
+  createShippingProfilesWorkflow,
   createStockLocationsWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
@@ -15,9 +21,16 @@ import {
 } from "@medusajs/core-flows"
 import {
   ContainerRegistrationKeys,
+  ApplicationMethodAllocation,
+  ApplicationMethodTargetType,
+  ApplicationMethodType,
   MedusaError,
   Modules,
   ProductStatus,
+  PromotionRuleOperator,
+  PromotionStatus,
+  PromotionType,
+  ShippingOptionPriceType,
 } from "@medusajs/framework/utils"
 
 type QueryGraph = {
@@ -65,7 +78,23 @@ type ExistingEntity = {
   external_id?: string | null
   handle?: string | null
   name?: string | null
+  code?: string | null
+  type?: string | null
+  is_tax_inclusive?: boolean | null
 }
+
+type ExistingStockLocation = ExistingEntity & {
+  fulfillment_sets?: ExistingEntity[] | null
+  fulfillment_providers?: ExistingEntity[] | null
+}
+
+type ExistingServiceZone = ExistingEntity & {
+  fulfillment_set_id?: string | null
+}
+
+type SeedGeoZone =
+  | { type: "country"; country_code: string }
+  | { type: "province"; country_code: string; province_code: string }
 
 type ExistingVariant = {
   id: string
@@ -91,6 +120,24 @@ const DEFAULT_REGION_NAME = "Chile - prueba"
 const DEFAULT_PUBLISHABLE_KEY_TITLE = "Storefront local de prueba"
 const DEFAULT_STOCK_LOCATION_NAME = "Bodega local de prueba"
 const DEFAULT_VARIANT_STOCK = 12
+const DEFAULT_FULFILLMENT_SET_NAME = "Entrega local de prueba"
+const MANUAL_FULFILLMENT_PROVIDER_ID = "fp_manual_manual"
+const PICKUP_SERVICE_ZONE_NAME = "TODO retiro en tienda - prueba"
+const RM_SERVICE_ZONE_NAME = "TODO despacho RM - prueba"
+const REST_SERVICE_ZONE_NAME = "TODO despacho resto del pais - prueba"
+const DEFAULT_SHIPPING_PROFILE_NAME = "Default Shipping Profile"
+const TEST_DISCOUNT_CODE = "TODO10"
+const FREE_SHIPPING_PROMOTION_CODE = "TODO_ENVIO_GRATIS"
+const FREE_SHIPPING_THRESHOLD_CLP = 50000
+const SHIPPING_OPTION_CODES = {
+  pickup: "pickup-todo",
+  metropolitan: "delivery-rm-todo",
+  restOfCountry: "delivery-rest-country-todo",
+}
+const SHIPPING_RATES_CLP = {
+  metropolitan: 3990,
+  restOfCountry: 6990,
+}
 
 const aromaticFamilies: SeedCategory[] = [
   {
@@ -282,13 +329,22 @@ export default async function seedCatalog({ container }: ExecArgs) {
 
   const salesChannel = await ensureSalesChannel(container, query)
   const stockLocation = await ensureStockLocation(container, query, salesChannel.id)
-  await ensureRegion(container, query)
+  const region = await ensureRegion(container, query)
+  await ensureFulfillmentProviderLink(container, query, stockLocation.id)
+  const fulfillmentSet = await ensureFulfillmentSet(container, query, stockLocation.id)
+  const serviceZones = await ensureServiceZones(container, query, fulfillmentSet.id)
+  const shippingProfile = await ensureShippingProfile(container, query)
+  await ensureShippingOptions(container, query, serviceZones, shippingProfile.id)
+  await ensurePromotions(container, query)
   await ensurePublishableKey(container, salesChannel.id)
   const categoriesByHandle = await ensureCategories(container, query)
   await ensureProducts(container, query, categoriesByHandle, salesChannel.id)
   await ensureProductInventory(container, query, stockLocation.id)
 
-  logger.info("Seed catalogo Fase 2: listo")
+  logger.info(
+    `Region ${region.name} verificada con CLP e impuestos incluidos para precios B2C.`
+  )
+  logger.info("Seed catalogo Fase 3A: listo")
 }
 
 async function ensureSalesChannel(
@@ -323,6 +379,400 @@ async function ensureSalesChannel(
   })
 
   return result[0]
+}
+
+async function ensureFulfillmentProviderLink(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  stockLocationId: string
+) {
+  const { data } = await query.graph<ExistingStockLocation>({
+    entity: "stock_location",
+    fields: ["id", "fulfillment_providers.id"],
+    filters: {
+      id: stockLocationId,
+    },
+    pagination: {
+      skip: 0,
+      take: 1,
+    },
+  })
+  const stockLocation = data[0]
+  const isLinked = stockLocation?.fulfillment_providers?.some(
+    (provider) => provider.id === MANUAL_FULFILLMENT_PROVIDER_ID
+  )
+
+  if (isLinked) {
+    return
+  }
+
+  await batchLinksWorkflow(container).run({
+    input: {
+      create: [
+        {
+          [Modules.STOCK_LOCATION]: { stock_location_id: stockLocationId },
+          [Modules.FULFILLMENT]: {
+            fulfillment_provider_id: MANUAL_FULFILLMENT_PROVIDER_ID,
+          },
+        },
+      ],
+      delete: [],
+    },
+  })
+}
+
+async function ensureFulfillmentSet(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  stockLocationId: string
+) {
+  const { data } = await query.graph<ExistingStockLocation>({
+    entity: "stock_location",
+    fields: ["id", "fulfillment_sets.id", "fulfillment_sets.name"],
+    filters: {
+      id: stockLocationId,
+    },
+    pagination: {
+      skip: 0,
+      take: 1,
+    },
+  })
+  const existing = data[0]?.fulfillment_sets?.find(
+    (fulfillmentSet) => fulfillmentSet.name === DEFAULT_FULFILLMENT_SET_NAME
+  )
+
+  if (existing) {
+    return existing
+  }
+
+  await createLocationFulfillmentSetWorkflow(container).run({
+    input: {
+      location_id: stockLocationId,
+      fulfillment_set_data: {
+        name: DEFAULT_FULFILLMENT_SET_NAME,
+        type: "shipping",
+      },
+    },
+  })
+
+  const { data: refreshedLocations } = await query.graph<ExistingStockLocation>({
+    entity: "stock_location",
+    fields: ["id", "fulfillment_sets.id", "fulfillment_sets.name"],
+    filters: {
+      id: stockLocationId,
+    },
+    pagination: {
+      skip: 0,
+      take: 1,
+    },
+  })
+  const fulfillmentSet = refreshedLocations[0]?.fulfillment_sets?.find(
+    (item) => item.name === DEFAULT_FULFILLMENT_SET_NAME
+  )
+
+  if (!fulfillmentSet) {
+    throw new MedusaError(
+      MedusaError.Types.UNEXPECTED_STATE,
+      "No se pudo crear el fulfillment set de prueba."
+    )
+  }
+
+  return fulfillmentSet
+}
+
+async function ensureServiceZones(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  fulfillmentSetId: string
+) {
+  const desiredZones: {
+    key: string
+    name: string
+    geo_zones: SeedGeoZone[]
+  }[] = [
+    {
+      key: "pickup",
+      name: PICKUP_SERVICE_ZONE_NAME,
+      geo_zones: [{ type: "country", country_code: "cl" }],
+    },
+    {
+      key: "metropolitan",
+      name: RM_SERVICE_ZONE_NAME,
+      geo_zones: [{ type: "province", country_code: "cl", province_code: "RM" }],
+    },
+    {
+      key: "restOfCountry",
+      name: REST_SERVICE_ZONE_NAME,
+      geo_zones: [{ type: "country", country_code: "cl" }],
+    },
+  ]
+
+  const { data: existingZones } = await query.graph<ExistingServiceZone>({
+    entity: "service_zone",
+    fields: ["id", "name", "fulfillment_set_id"],
+    filters: {
+      name: desiredZones.map((zone) => zone.name),
+    },
+  })
+  const existingNames = new Set(existingZones.map((zone) => zone.name))
+  const missingZones = desiredZones.filter((zone) => !existingNames.has(zone.name))
+
+  if (missingZones.length > 0) {
+    await createServiceZonesWorkflow(container).run({
+      input: {
+        data: missingZones.map((zone) => ({
+          name: zone.name,
+          fulfillment_set_id: fulfillmentSetId,
+          geo_zones: [...zone.geo_zones],
+          metadata: {
+            sample_data: true,
+            source: SAMPLE_MARKER,
+            TODO: "Reemplazar zonas de servicio antes de produccion.",
+          },
+        })),
+      },
+    })
+  }
+
+  const { data: serviceZones } = await query.graph<ExistingServiceZone>({
+    entity: "service_zone",
+    fields: ["id", "name", "fulfillment_set_id"],
+    filters: {
+      name: desiredZones.map((zone) => zone.name),
+    },
+  })
+  const serviceZonesByName = new Map(
+    serviceZones.map((zone) => [zone.name as string, zone])
+  )
+
+  return {
+    pickup: getServiceZone(serviceZonesByName, PICKUP_SERVICE_ZONE_NAME),
+    metropolitan: getServiceZone(serviceZonesByName, RM_SERVICE_ZONE_NAME),
+    restOfCountry: getServiceZone(serviceZonesByName, REST_SERVICE_ZONE_NAME),
+  }
+}
+
+async function ensureShippingProfile(
+  container: ExecArgs["container"],
+  query: QueryGraph
+) {
+  const { data } = await query.graph<ExistingEntity>({
+    entity: "shipping_profile",
+    fields: ["id", "name", "type"],
+    pagination: {
+      skip: 0,
+      take: 1,
+    },
+  })
+
+  if (data[0]) {
+    return data[0]
+  }
+
+  const { result } = await createShippingProfilesWorkflow(container).run({
+    input: {
+      data: [
+        {
+          name: DEFAULT_SHIPPING_PROFILE_NAME,
+          type: "default",
+        },
+      ],
+    },
+  })
+
+  return result[0]
+}
+
+async function ensureShippingOptions(
+  container: ExecArgs["container"],
+  query: QueryGraph,
+  serviceZones: {
+    pickup: ExistingServiceZone
+    metropolitan: ExistingServiceZone
+    restOfCountry: ExistingServiceZone
+  },
+  shippingProfileId: string
+) {
+  const desiredOptions = [
+    {
+      name: "TODO Retiro en tienda",
+      service_zone_id: serviceZones.pickup.id,
+      type: {
+        label: "Retiro",
+        description: "TODO punto de retiro configurable.",
+        code: SHIPPING_OPTION_CODES.pickup,
+      },
+      amount: 0,
+      metadata: {
+        delivery_kind: "pickup",
+        TODO: "Cambiar direccion y horario desde configuracion/admin.",
+      },
+    },
+    {
+      name: "TODO Despacho Región Metropolitana",
+      service_zone_id: serviceZones.metropolitan.id,
+      type: {
+        label: "Despacho RM",
+        description: "TODO tarifa ficticia RM.",
+        code: SHIPPING_OPTION_CODES.metropolitan,
+      },
+      amount: SHIPPING_RATES_CLP.metropolitan,
+      metadata: {
+        delivery_kind: "shipping",
+        zone: "metropolitan",
+        TODO: "Reemplazar tarifa ficticia antes de produccion.",
+      },
+    },
+    {
+      name: "TODO Despacho resto del país",
+      service_zone_id: serviceZones.restOfCountry.id,
+      type: {
+        label: "Despacho resto",
+        description: "TODO tarifa ficticia resto del pais.",
+        code: SHIPPING_OPTION_CODES.restOfCountry,
+      },
+      amount: SHIPPING_RATES_CLP.restOfCountry,
+      metadata: {
+        delivery_kind: "shipping",
+        zone: "rest_of_country",
+        TODO: "Reemplazar tarifa ficticia antes de produccion.",
+      },
+    },
+  ]
+
+  const { data: existingOptions } = await query.graph<ExistingEntity>({
+    entity: "shipping_option",
+    fields: ["id", "name", "is_tax_inclusive"],
+    filters: {
+      name: desiredOptions.map((option) => option.name),
+    },
+  })
+  const existingNames = new Set(existingOptions.map((option) => option.name))
+  const missingOptions = desiredOptions.filter(
+    (option) => !existingNames.has(option.name)
+  )
+
+  if (missingOptions.length === 0) {
+    return
+  }
+
+  await createShippingOptionsWorkflow(container).run({
+    input: missingOptions.map((option) => ({
+      name: option.name,
+      service_zone_id: option.service_zone_id,
+      shipping_profile_id: shippingProfileId,
+      provider_id: MANUAL_FULFILLMENT_PROVIDER_ID,
+      type: option.type,
+      price_type: ShippingOptionPriceType.FLAT,
+      prices: [
+        {
+          amount: option.amount,
+          currency_code: "clp",
+        },
+      ],
+      metadata: {
+        sample_data: true,
+        source: SAMPLE_MARKER,
+        ...option.metadata,
+      },
+    })),
+  })
+}
+
+async function ensurePromotions(
+  container: ExecArgs["container"],
+  query: QueryGraph
+) {
+  const promotionCodes = [
+    TEST_DISCOUNT_CODE,
+    FREE_SHIPPING_PROMOTION_CODE,
+  ]
+  const { data: existingPromotions } = await query.graph<ExistingEntity>({
+    entity: "promotion",
+    fields: ["id", "code"],
+    filters: {
+      code: promotionCodes,
+    },
+  })
+  const existingCodes = new Set(existingPromotions.map((promotion) => promotion.code))
+  const promotionsData: Record<string, unknown>[] = []
+
+  if (!existingCodes.has(TEST_DISCOUNT_CODE)) {
+    promotionsData.push({
+      code: TEST_DISCOUNT_CODE,
+      type: PromotionType.STANDARD,
+      status: PromotionStatus.ACTIVE,
+      is_tax_inclusive: true,
+      application_method: {
+        type: ApplicationMethodType.PERCENTAGE,
+        target_type: ApplicationMethodTargetType.ITEMS,
+        allocation: ApplicationMethodAllocation.ACROSS,
+        value: 10,
+        currency_code: "clp",
+      },
+      metadata: {
+        sample_data: true,
+        source: SAMPLE_MARKER,
+        TODO: "Promocion de prueba editable desde Admin.",
+      },
+    })
+  }
+
+  if (!existingCodes.has(FREE_SHIPPING_PROMOTION_CODE)) {
+    promotionsData.push({
+      code: FREE_SHIPPING_PROMOTION_CODE,
+      type: PromotionType.STANDARD,
+      status: PromotionStatus.ACTIVE,
+      is_automatic: true,
+      is_tax_inclusive: true,
+      application_method: {
+        type: ApplicationMethodType.PERCENTAGE,
+        target_type: ApplicationMethodTargetType.SHIPPING_METHODS,
+        allocation: ApplicationMethodAllocation.ACROSS,
+        value: 100,
+        currency_code: "clp",
+      },
+      rules: [
+        {
+          attribute: "subtotal",
+          operator: PromotionRuleOperator.GTE,
+          values: String(FREE_SHIPPING_THRESHOLD_CLP),
+          description: "TODO monto minimo ficticio para envio gratis.",
+        },
+      ],
+      metadata: {
+        sample_data: true,
+        source: SAMPLE_MARKER,
+        TODO: "Monto minimo ficticio editable desde Admin.",
+      },
+    })
+  }
+
+  if (promotionsData.length === 0) {
+    return
+  }
+
+  await createPromotionsWorkflow(container).run({
+    input: {
+      promotionsData: promotionsData as never,
+    },
+  })
+}
+
+function getServiceZone(
+  serviceZonesByName: Map<string, ExistingServiceZone>,
+  name: string
+) {
+  const serviceZone = serviceZonesByName.get(name)
+
+  if (!serviceZone) {
+    throw new MedusaError(
+      MedusaError.Types.UNEXPECTED_STATE,
+      `No se pudo crear la zona de servicio ${name}.`
+    )
+  }
+
+  return serviceZone
 }
 
 async function ensureStockLocation(
@@ -384,6 +834,13 @@ async function ensureRegion(container: ExecArgs["container"], query: QueryGraph)
   })
 
   if (data[0]) {
+    if (data[0].is_tax_inclusive !== true) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        "La region Chile debe tener precios con impuestos incluidos (is_tax_inclusive=true)."
+      )
+    }
+
     return data[0]
   }
 

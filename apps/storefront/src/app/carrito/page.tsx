@@ -40,6 +40,12 @@ export default async function CartPage() {
               <p className="mt-3 text-sm leading-6 text-muted">
                 {cartText.subtotalHelp}
               </p>
+              <Link
+                className="mt-5 inline-flex h-11 w-full items-center justify-center bg-primary px-5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                href="/checkout"
+              >
+                Ir al checkout
+              </Link>
             </aside>
           </div>
         ) : (
