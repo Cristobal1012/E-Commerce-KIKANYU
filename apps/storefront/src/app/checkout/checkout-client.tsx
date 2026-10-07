@@ -6,6 +6,7 @@ import { brandConfig } from "@config/brand.config"
 import { checkoutConfig } from "@config/checkout.config"
 import {
   applyCheckoutPromotionAction,
+  beginCheckoutPaymentAction,
   removeCheckoutPromotionAction,
   updateCheckoutDeliveryAction,
   validateCheckoutStockAction,
@@ -245,6 +246,23 @@ export function CheckoutClient({ initialCart }: CheckoutClientProps) {
     })
   }
 
+  function beginPayment() {
+    setMessage("")
+    startTransition(async () => {
+      const result = await beginCheckoutPaymentAction()
+
+      if (result.cart) {
+        setCart(result.cart)
+      }
+
+      setMessage(result.message)
+
+      if (result.ok && result.checkoutUrl) {
+        window.location.href = result.checkoutUrl
+      }
+    })
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-5">
@@ -470,9 +488,13 @@ export function CheckoutClient({ initialCart }: CheckoutClientProps) {
           className="mt-5 h-11 w-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
           type="button"
           disabled={isPending}
-          onClick={continueToSummary}
+          onClick={cart.email && cart.shippingMethods.length > 0 ? beginPayment : continueToSummary}
         >
-          {isPending ? "Actualizando..." : checkoutText.readyToPay}
+          {isPending
+            ? "Actualizando..."
+            : cart.email && cart.shippingMethods.length > 0
+              ? "Pagar"
+              : checkoutText.readyToPay}
         </button>
         <p className="mt-3 text-sm leading-6 text-muted">{checkoutText.payLater}</p>
         <Link className="mt-4 inline-flex text-sm font-semibold text-muted" href="/carrito">

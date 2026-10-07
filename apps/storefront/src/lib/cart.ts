@@ -20,6 +20,7 @@ export type StoreCart = {
   id: string
   currencyCode: string
   regionId: string | null
+  completedAt: string | null
   items: CartLineItem[]
   subtotal: number
   discountTotal: number
@@ -29,6 +30,7 @@ export type StoreCart = {
   shippingMethods: CartShippingMethod[]
   email: string | null
   totalQuantity: number
+  paymentCollection: CartPaymentCollection | null
 }
 
 export type CartPromotion = {
@@ -42,6 +44,21 @@ export type CartShippingMethod = {
   amount: number
   total: number
   shippingOptionId: string | null
+}
+
+export type CartPaymentCollection = {
+  id: string
+  status: string | null
+  amount: number
+  currencyCode: string
+  paymentSessions: CartPaymentSession[]
+}
+
+export type CartPaymentSession = {
+  id: string
+  providerId: string
+  status: string | null
+  data: Record<string, unknown> | null
 }
 
 export type StoreShippingOption = {
@@ -60,6 +77,7 @@ type StoreCartPayload = {
   id: string
   currency_code?: string | null
   region_id?: string | null
+  completed_at?: string | null
   subtotal?: number | null
   discount_total?: number | null
   shipping_total?: number | null
@@ -68,6 +86,22 @@ type StoreCartPayload = {
   shipping_methods?: StoreShippingMethodPayload[] | null
   email?: string | null
   items?: StoreLineItemPayload[] | null
+  payment_collection?: StorePaymentCollectionPayload | null
+}
+
+type StorePaymentCollectionPayload = {
+  id: string
+  status?: string | null
+  amount?: number | null
+  currency_code?: string | null
+  payment_sessions?: StorePaymentSessionPayload[] | null
+}
+
+type StorePaymentSessionPayload = {
+  id: string
+  provider_id?: string | null
+  status?: string | null
+  data?: Record<string, unknown> | null
 }
 
 type StorePromotionPayload = {
@@ -100,6 +134,10 @@ type StoreShippingOptionsResponse = {
   shipping_options: StoreShippingOptionPayload[]
 }
 
+type StorePaymentCollectionResponse = {
+  payment_collection: StorePaymentCollectionPayload
+}
+
 type StoreLineItemPayload = {
   id: string
   title: string
@@ -127,6 +165,7 @@ const cartFields = [
   "id",
   "currency_code",
   "region_id",
+  "completed_at",
   "email",
   "subtotal",
   "discount_total",
@@ -139,6 +178,14 @@ const cartFields = [
   "shipping_methods.amount",
   "shipping_methods.total",
   "shipping_methods.shipping_option_id",
+  "payment_collection.id",
+  "payment_collection.status",
+  "payment_collection.amount",
+  "payment_collection.currency_code",
+  "payment_collection.payment_sessions.id",
+  "payment_collection.payment_sessions.provider_id",
+  "payment_collection.payment_sessions.status",
+  "payment_collection.payment_sessions.data",
   "*items",
   "*items.variant",
   "*items.variant.product",
@@ -286,6 +333,39 @@ export async function setCartShippingMethod(input: {
   return normalizeCart(response.cart)
 }
 
+export async function createCartPaymentCollection(cartId: string) {
+  const response = await medusaFetch<StorePaymentCollectionResponse>(
+    `/store/payment-collections?fields=id,status,amount,currency_code,payment_sessions.id,payment_sessions.provider_id,payment_sessions.status,payment_sessions.data`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        cart_id: cartId,
+      }),
+      cache: "no-store",
+    }
+  )
+
+  return normalizePaymentCollection(response.payment_collection)
+}
+
+export async function createCartPaymentSession(input: {
+  paymentCollectionId: string
+  providerId: string
+}) {
+  const response = await medusaFetch<StorePaymentCollectionResponse>(
+    `/store/payment-collections/${input.paymentCollectionId}/payment-sessions?fields=id,status,amount,currency_code,payment_sessions.id,payment_sessions.provider_id,payment_sessions.status,payment_sessions.data`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: input.providerId,
+      }),
+      cache: "no-store",
+    }
+  )
+
+  return normalizePaymentCollection(response.payment_collection)
+}
+
 export async function addCartPromotion(input: {
   cartId: string
   code: string
@@ -352,6 +432,7 @@ function normalizeCart(cart: StoreCartPayload): StoreCart {
     id: cart.id,
     currencyCode: cart.currency_code ?? "clp",
     regionId: cart.region_id ?? null,
+    completedAt: cart.completed_at ?? null,
     items,
     subtotal: cart.subtotal ?? calculateCartSubtotal(items),
     discountTotal: cart.discount_total ?? 0,
@@ -370,6 +451,26 @@ function normalizeCart(cart: StoreCartPayload): StoreCart {
     })),
     email: cart.email ?? null,
     totalQuantity: items.reduce((total, item) => total + item.quantity, 0),
+    paymentCollection: cart.payment_collection
+      ? normalizePaymentCollection(cart.payment_collection)
+      : null,
+  }
+}
+
+function normalizePaymentCollection(
+  collection: StorePaymentCollectionPayload
+): CartPaymentCollection {
+  return {
+    id: collection.id,
+    status: collection.status ?? null,
+    amount: collection.amount ?? 0,
+    currencyCode: collection.currency_code ?? "clp",
+    paymentSessions: (collection.payment_sessions ?? []).map((session) => ({
+      id: session.id,
+      providerId: session.provider_id ?? "",
+      status: session.status ?? null,
+      data: session.data ?? null,
+    })),
   }
 }
 

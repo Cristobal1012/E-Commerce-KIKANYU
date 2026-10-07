@@ -24,3 +24,7 @@ build
 !.yarn/versions
 
 .medusa
+
+.env
+.env.*
+!.env.example

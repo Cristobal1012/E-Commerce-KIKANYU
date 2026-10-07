@@ -106,6 +106,12 @@ despacho resto del país, además de promociones de prueba:
 Los datos pendientes para producción están listados en
 `docs/pendientes-produccion-fase-3a.md`.
 
+## Pago de prueba con Mercado Pago
+
+Fase 3B agrega Mercado Pago Checkout Pro mediante Orders API, solo en sandbox.
+La configuración de credenciales, webhook HTTPS, eventos del panel y compra de
+prueba está documentada en `docs/mercadopago-checkout-pro.md`.
+
 ## White-label
 
 La marca, contacto, punto de retiro, textos legales placeholder y tokens visuales viven en `config/brand.config.ts`. No hardcodees nombres de tienda, colores, logos ni datos de contacto en componentes.

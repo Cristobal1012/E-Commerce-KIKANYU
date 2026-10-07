@@ -36,6 +36,7 @@
     "@medusajs/ui": "4.2.6",
     "@tanstack/react-query": "5.64.2",
     "ioredis": "^5.4.1",
+    "mercadopago": "^3.6.1",
     "react-i18next": "13.5.0",
     "react-router-dom": "7.18.2",
     "request-ip": "^3.3.0",

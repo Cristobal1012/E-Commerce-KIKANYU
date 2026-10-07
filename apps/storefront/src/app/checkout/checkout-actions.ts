@@ -5,6 +5,8 @@ import { brandConfig } from "@config/brand.config"
 import { checkoutConfig } from "@config/checkout.config"
 import {
   addCartPromotion,
+  createCartPaymentCollection,
+  createCartPaymentSession,
   getCart,
   listCartShippingOptions,
   removeCartPromotion,
@@ -29,6 +31,8 @@ export type CheckoutActionState = {
   message: string
   fieldErrors?: CheckoutFieldMessages
 }
+
+const mercadoPagoProviderId = "pp_mercadopago_mercadopago"
 
 export async function validateCheckoutStockAction(): Promise<CheckoutActionState> {
   try {
@@ -224,6 +228,63 @@ export async function removeCheckoutPromotionAction(code: string): Promise<Check
     ok: true,
     cart: updatedCart,
     message: "Código quitado.",
+  }
+}
+
+export async function beginCheckoutPaymentAction(): Promise<CheckoutActionState & {
+  checkoutUrl?: string
+}> {
+  try {
+    const stock = await validateCheckoutStockAction()
+
+    if (!stock.ok || !stock.cart) {
+      return stock
+    }
+
+    if (!stock.cart.email || stock.cart.shippingMethods.length === 0) {
+      return {
+        ok: false,
+        cart: stock.cart,
+        message: "Completa tus datos y la entrega antes de pagar.",
+      }
+    }
+
+    const paymentCollection = await createCartPaymentCollection(stock.cart.id)
+    const refreshedCollection = await createCartPaymentSession({
+      paymentCollectionId: paymentCollection.id,
+      providerId: mercadoPagoProviderId,
+    })
+    const session = refreshedCollection.paymentSessions.find(
+      (item) => item.providerId === mercadoPagoProviderId
+    )
+    const checkoutUrl =
+      typeof session?.data?.checkout_url === "string"
+        ? session.data.checkout_url
+        : undefined
+
+    if (!checkoutUrl) {
+      return {
+        ok: false,
+        cart: await getCart(stock.cart.id),
+        message: "No pudimos iniciar el pago con Mercado Pago. Inténtalo nuevamente.",
+      }
+    }
+
+    return {
+      ok: true,
+      cart: await getCart(stock.cart.id),
+      message: "Redirigiendo a Mercado Pago...",
+      checkoutUrl,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      cart: await getCurrentCart(),
+      message:
+        error instanceof Error
+          ? error.message
+          : "No pudimos iniciar el pago. Inténtalo nuevamente.",
+    }
   }
 }
 
