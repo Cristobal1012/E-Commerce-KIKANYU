@@ -50,17 +50,46 @@ type InjectedDependencies = {
     warn: (message: string) => void
     error: (message: string) => void
   }
-  paymentSessionService?: {
-    retrieve: (
-      id: string,
-      config?: Record<string, unknown>
-    ) => Promise<{
-      data?: Record<string, unknown> | null
-    }>
-  }
+  paymentSessionService?: PaymentIncidentSessionService
+  paymentService?: PaymentIncidentPaymentService
+  remoteQuery?: RemoteQueryFunction
 }
 
 const PROVIDER_ID = "mercadopago"
+
+type PersistedPaymentSession = {
+  id?: string
+  payment_collection_id?: string | null
+  data?: Record<string, unknown> | null
+  payment?: {
+    id?: string
+    data?: Record<string, unknown> | null
+  } | null
+}
+
+type PaymentIncidentSessionService = {
+  retrieve: (
+    id: string,
+    config?: Record<string, unknown>
+  ) => Promise<PersistedPaymentSession>
+  update: (data: {
+    id: string
+    data?: Record<string, unknown>
+  }) => Promise<unknown>
+}
+
+type PaymentIncidentPaymentService = {
+  update: (data: {
+    id: string
+    data?: Record<string, unknown>
+  }) => Promise<unknown>
+}
+
+type RemoteQueryFunction = (query: {
+  entryPoint: string
+  variables: Record<string, unknown>
+  fields: string[]
+}) => Promise<Array<Record<string, unknown>>>
 
 class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoPagoPaymentOptions> {
   static identifier = PROVIDER_ID
@@ -68,12 +97,18 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
   protected readonly options_: MercadoPagoPaymentOptions
   protected readonly orderClient_: Order
   protected readonly logger_: InjectedDependencies["logger"]
+  protected readonly paymentService_?: PaymentIncidentPaymentService
+  protected readonly paymentSessionService_?: PaymentIncidentSessionService
+  protected readonly remoteQuery_?: RemoteQueryFunction
 
   constructor(container: InjectedDependencies, options: MercadoPagoPaymentOptions) {
     super(container, options)
 
     this.options_ = options
     this.logger_ = container.logger
+    this.paymentService_ = container.paymentService
+    this.paymentSessionService_ = container.paymentSessionService
+    this.remoteQuery_ = container.remoteQuery
     this.orderClient_ = new Order(
       new MercadoPagoConfig({
         accessToken: options.accessToken,
@@ -195,6 +230,7 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
         status: PaymentSessionStatus.CAPTURED,
         data: {
           ...session,
+          mercadopago_payment_id: order.transactions?.payments?.[0]?.id,
           mercadopago_status: order.status,
           mercadopago_status_detail: order.status_detail,
         },
@@ -277,11 +313,41 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
   }
 
   async capturePayment(input: CapturePaymentInput): Promise<CapturePaymentOutput> {
+    // Checkout Pro Orders captures the buyer payment in Mercado Pago's checkout
+    // flow. Medusa may call this to record an internal capture; no additional
+    // provider-side capture request is needed here.
     return { data: input.data }
   }
 
   async cancelPayment(input: CancelPaymentInput): Promise<CancelPaymentOutput> {
-    return { data: input.data }
+    const session = parseSessionData(input.data)
+    const orderId = requireString(
+      session.mercadopago_order_id,
+      "mercadopago_order_id"
+    )
+
+    try {
+      const order = await this.orderClient_.cancel({
+        id: orderId,
+        requestOptions: {
+          idempotencyKey: buildIdempotencyKey("cancel", session),
+        },
+      })
+
+      return {
+        data: {
+          ...session,
+          mercadopago_status: order.status,
+          mercadopago_status_detail: order.status_detail,
+        },
+      }
+    } catch (error) {
+      await this.markPaymentForManualReview(
+        session,
+        `Mercado Pago cancel failed: ${getErrorMessage(error)}`
+      )
+      throw error
+    }
   }
 
   async deletePayment(input: DeletePaymentInput): Promise<DeletePaymentOutput> {
@@ -289,7 +355,58 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
-    return { data: input.data }
+    const session = parseSessionData(input.data)
+    const orderId = requireString(
+      session.mercadopago_order_id,
+      "mercadopago_order_id"
+    )
+    const expectedAmount = requireString(session.expected_amount, "expected_amount")
+    const refundAmount = toMercadoPagoAmount(input.amount)
+    const isPartialRefund = refundAmount !== expectedAmount
+    const paymentId = getString(session.mercadopago_payment_id)
+
+    try {
+      const order = await this.orderClient_.refund({
+        id: orderId,
+        requestOptions: {
+          idempotencyKey: buildIdempotencyKey("refund", session, refundAmount),
+        },
+        body: isPartialRefund
+          ? {
+              transactions: [
+                {
+                  id: requireString(paymentId, "mercadopago_payment_id"),
+                  amount: refundAmount,
+                },
+              ],
+            }
+          : undefined,
+      })
+      const cartId = await this.getCartIdForPaymentSession(session.session_id)
+      const orderCreated = cartId ? await this.hasOrderForCart(cartId) : true
+
+      if (!orderCreated) {
+        await this.markPaymentForManualReview(
+          session,
+          "Mercado Pago payment was refunded after Medusa could not complete the cart."
+        )
+      }
+
+      return {
+        data: {
+          ...session,
+          mercadopago_status: order.status,
+          mercadopago_status_detail: order.status_detail,
+          mercadopago_refunded_amount: refundAmount,
+        },
+      }
+    } catch (error) {
+      await this.markPaymentForManualReview(
+        session,
+        `Mercado Pago refund failed: ${getErrorMessage(error)}`
+      )
+      throw error
+    }
   }
 
   async retrievePayment(input: RetrievePaymentInput): Promise<RetrievePaymentOutput> {
@@ -332,27 +449,125 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
   }
 
   protected async getPersistedPaymentSession(sessionId: string) {
-    const paymentSessionService = this.container.paymentSessionService
+    const paymentSessionService = this.paymentSessionService_
 
-    if (
-      !paymentSessionService ||
-      typeof paymentSessionService !== "object" ||
-      typeof (paymentSessionService as InjectedDependencies["paymentSessionService"])
-        ?.retrieve !== "function"
-    ) {
+    if (!paymentSessionService) {
       throw new MedusaError(
         MedusaError.Types.UNEXPECTED_STATE,
         "Mercado Pago provider cannot read the persisted payment session."
       )
     }
 
-    return (
-      paymentSessionService as NonNullable<
-        InjectedDependencies["paymentSessionService"]
-      >
-    ).retrieve(sessionId, {
-      select: ["id", "data"],
+    return paymentSessionService.retrieve(sessionId, {
+      select: ["id", "data", "payment_collection_id"],
+      relations: ["payment"],
     })
+  }
+
+  protected async markPaymentForManualReview(
+    session: MercadoPagoSessionData,
+    reason: string
+  ) {
+    const cartId = await this.getCartIdForPaymentSession(session.session_id)
+    const incident = {
+      required: true,
+      reason,
+      mercadopago_order_id: session.mercadopago_order_id,
+      session_id: session.session_id,
+      cart_id: cartId,
+      created_at: new Date().toISOString(),
+    }
+
+    this.logger_?.error(
+      `Mercado Pago manual review required order_id=${session.mercadopago_order_id ?? "unknown"} cart_id=${cartId ?? "unknown"} session_id=${session.session_id ?? "unknown"} reason=${reason}`
+    )
+
+    if (!session.session_id) {
+      return
+    }
+
+    const persistedSession = await this.getPersistedPaymentSession(session.session_id)
+    const paymentId = persistedSession.payment?.id
+
+    if (paymentId && this.paymentService_) {
+      await this.paymentService_.update({
+        id: paymentId,
+        data: {
+          ...(persistedSession.payment?.data ?? {}),
+          mercadopago_manual_review: incident,
+        },
+      })
+      return
+    }
+
+    if (this.paymentSessionService_) {
+      await this.paymentSessionService_.update({
+        id: session.session_id,
+        data: {
+          ...(persistedSession.data ?? {}),
+          mercadopago_manual_review: incident,
+        },
+      })
+    }
+  }
+
+  protected async getCartIdForPaymentSession(sessionId: string | undefined) {
+    if (!sessionId) {
+      return undefined
+    }
+
+    try {
+      const persistedSession = await this.getPersistedPaymentSession(sessionId)
+      const collectionId = persistedSession.payment_collection_id
+
+      if (!collectionId) {
+        return undefined
+      }
+
+      const remoteQuery = this.remoteQuery_
+
+      if (!remoteQuery) {
+        return undefined
+      }
+
+      const [link] = await remoteQuery({
+        entryPoint: "cart_payment_collection",
+        variables: {
+          filters: {
+            payment_collection_id: collectionId,
+          },
+        },
+        fields: ["cart_id"],
+      })
+
+      return typeof link?.cart_id === "string" ? link.cart_id : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  protected async hasOrderForCart(cartId: string) {
+    try {
+      const remoteQuery = this.remoteQuery_
+
+      if (!remoteQuery) {
+        return false
+      }
+
+      const [link] = await remoteQuery({
+        entryPoint: "order_cart",
+        variables: {
+          filters: {
+            cart_id: cartId,
+          },
+        },
+        fields: ["order_id"],
+      })
+
+      return typeof link?.order_id === "string"
+    } catch {
+      return false
+    }
   }
 }
 
@@ -385,6 +600,24 @@ function unsupportedWebhook(session: MercadoPagoSessionData = {}) {
       amount: new BigNumber(session.expected_amount ?? 0),
     },
   }
+}
+
+function buildIdempotencyKey(
+  operation: "cancel" | "refund",
+  session: MercadoPagoSessionData,
+  amount?: string
+) {
+  return [
+    "mercadopago",
+    operation,
+    session.mercadopago_order_id ?? "order",
+    session.session_id ?? "session",
+    amount ?? "full",
+  ].join(":")
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "unknown error"
 }
 
 function getHeader(headers: unknown, key: string) {

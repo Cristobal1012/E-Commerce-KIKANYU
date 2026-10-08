@@ -44,8 +44,11 @@ export function decideMercadoPagoOrder(order: MercadoPagoOrder): MercadoPagoDeci
   if (
     orderStatus === "cancelled" ||
     orderStatus === "canceled" ||
+    orderStatus === "expired" ||
+    orderStatus === "expiration_date_reached" ||
     paymentStatus === "cancelled" ||
-    paymentStatus === "canceled"
+    paymentStatus === "canceled" ||
+    paymentStatus === "expired"
   ) {
     return "cancelled"
   }

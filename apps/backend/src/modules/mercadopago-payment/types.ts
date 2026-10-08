@@ -11,9 +11,20 @@ export type MercadoPagoPaymentOptions = {
 export type MercadoPagoSessionData = {
   session_id?: string
   mercadopago_order_id?: string
+  mercadopago_payment_id?: string
   checkout_url?: string
   expected_amount?: string
   expected_currency?: string
+  mercadopago_manual_review?: MercadoPagoManualReview
+}
+
+export type MercadoPagoManualReview = {
+  required: true
+  reason: string
+  mercadopago_order_id?: string
+  session_id?: string
+  cart_id?: string
+  created_at: string
 }
 
 export type MercadoPagoWebhookBody = {

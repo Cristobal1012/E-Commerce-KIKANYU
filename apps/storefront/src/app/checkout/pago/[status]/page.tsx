@@ -5,7 +5,7 @@ import { getCurrentCart } from "@/lib/current-cart"
 
 type PaymentReturnPageProps = {
   params: Promise<{
-    status: "success" | "pending" | "failure"
+    status: "success" | "pending" | "failure" | "canceled" | "expired"
   }>
 }
 
@@ -24,6 +24,16 @@ const statusCopy = {
     title: "El pago no fue aprobado",
     description:
       "Puedes volver al checkout e intentarlo nuevamente con otro medio de pago.",
+  },
+  canceled: {
+    title: "El pago fue cancelado",
+    description:
+      "La operación no se completó. Puedes volver al checkout e iniciar un nuevo pago.",
+  },
+  expired: {
+    title: "La orden de pago venció",
+    description:
+      "El enlace de Mercado Pago ya no está disponible. Vuelve al checkout para generar una nueva orden.",
   },
 }
 
@@ -62,7 +72,7 @@ export default async function PaymentReturnPage({ params }: PaymentReturnPagePro
               className="inline-flex h-11 items-center justify-center bg-primary px-5 text-sm font-semibold text-primary-foreground"
               href={isConfirmed ? "/" : "/checkout"}
             >
-              {isConfirmed ? "Volver al catálogo" : "Volver al checkout"}
+              {isConfirmed ? "Volver al catálogo" : "Reintentar pago"}
             </Link>
             {!isConfirmed ? (
               <Link
