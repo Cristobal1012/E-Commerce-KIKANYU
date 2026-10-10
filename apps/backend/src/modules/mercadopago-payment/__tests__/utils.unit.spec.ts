@@ -39,7 +39,7 @@ const providerOptions: MercadoPagoPaymentOptions = {
   accessToken: "TEST_ACCESS_TOKEN",
   webhookSecret: "TEST_WEBHOOK_SECRET",
   storefrontUrl: "http://localhost:3000",
-  backendUrl: "http://localhost:9000",
+  notificationBaseUrl: "https://mp-webhook-test.example.com",
 }
 
 class TestMercadoPagoPaymentProvider extends MercadoPagoPaymentProviderService {

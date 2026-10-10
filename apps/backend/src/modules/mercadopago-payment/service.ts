@@ -121,7 +121,7 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
       "accessToken",
       "webhookSecret",
       "storefrontUrl",
-      "backendUrl",
+      "notificationBaseUrl",
     ]
 
     for (const key of required) {
@@ -174,7 +174,7 @@ class MercadoPagoPaymentProviderService extends AbstractPaymentProvider<MercadoP
         ],
         config: {
           online: {
-            callback_url: `${trimSlash(this.options_.backendUrl)}/hooks/payment/${PROVIDER_ID}_${PROVIDER_ID}`,
+            callback_url: `${trimSlash(this.options_.notificationBaseUrl)}/hooks/payment/${PROVIDER_ID}_${PROVIDER_ID}`,
             success_url: `${trimSlash(this.options_.storefrontUrl)}/checkout/pago/success`,
             pending_url: `${trimSlash(this.options_.storefrontUrl)}/checkout/pago/pending`,
             failure_url: `${trimSlash(this.options_.storefrontUrl)}/checkout/pago/failure`,

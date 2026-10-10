@@ -4,6 +4,7 @@ import { defineConfig } from "@medusajs/framework/utils"
 module.exports = defineConfig({
   admin: {
     disable: false,
+    backendUrl: process.env.MEDUSA_BACKEND_URL,
   },
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
@@ -28,7 +29,7 @@ module.exports = defineConfig({
               accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
               webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET,
               storefrontUrl: process.env.STOREFRONT_URL,
-              backendUrl: process.env.MEDUSA_BACKEND_URL,
+              notificationBaseUrl: process.env.MERCADOPAGO_NOTIFICATION_BASE_URL,
               orderExpiration: process.env.MERCADOPAGO_ORDER_EXPIRATION,
             },
           },

@@ -20,10 +20,15 @@ MERCADOPAGO_ACCESS_TOKEN=
 MERCADOPAGO_WEBHOOK_SECRET=
 MERCADOPAGO_ORDER_EXPIRATION=P1D
 MEDUSA_BACKEND_URL=http://localhost:9000
+MERCADOPAGO_NOTIFICATION_BASE_URL=https://TU-TUNEL-HTTPS
 STOREFRONT_URL=http://localhost:3000
 ```
 
 `MERCADOPAGO_PUBLIC_KEY` no se usa en este flujo, porque Checkout Pro redirige al `checkout_url` generado desde backend.
+
+`MEDUSA_BACKEND_URL` se usa para el Admin de Medusa. En desarrollo debe quedar en `http://localhost:9000` para que el Admin use el backend local y mantenga bien la sesion.
+
+`MERCADOPAGO_NOTIFICATION_BASE_URL` se usa solo para construir el `callback_url` de Mercado Pago. Durante pruebas locales debe ser la URL HTTPS publica del tunel, sin slash final.
 
 ## Pasos manuales en Mercado Pago
 
@@ -32,6 +37,12 @@ STOREFRONT_URL=http://localhost:3000
 3. Copia solo en tu `.env` local la clave privada de prueba (`Access Token`).
 4. Ve a `Webhooks > Configurar notificaciones`.
 5. Registra la URL HTTPS:
+
+```text
+${MERCADOPAGO_NOTIFICATION_BASE_URL}/hooks/payment/mercadopago_mercadopago
+```
+
+Ejemplo:
 
 ```text
 https://TU-TUNEL-HTTPS/hooks/payment/mercadopago_mercadopago
@@ -57,7 +68,9 @@ o:
 ngrok http 9000
 ```
 
-Luego usa la URL HTTPS generada como `MEDUSA_BACKEND_URL` y como base de la URL de webhook en Mercado Pago.
+Luego usa la URL HTTPS generada como `MERCADOPAGO_NOTIFICATION_BASE_URL` y como base de la URL de webhook en Mercado Pago.
+
+No cambies `MEDUSA_BACKEND_URL` al dominio del tunel en desarrollo. Esa variable queda para el Admin de Medusa y debe seguir apuntando a `http://localhost:9000`. Tampoco agregues el host del tunel a `server.allowedHosts`: el tunel solo debe recibir webhooks, no servir el Admin.
 
 ## Pasos manuales en Medusa Admin
 

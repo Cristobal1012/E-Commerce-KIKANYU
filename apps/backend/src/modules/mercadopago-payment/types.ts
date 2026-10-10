@@ -4,7 +4,7 @@ export type MercadoPagoPaymentOptions = {
   accessToken: string
   webhookSecret: string
   storefrontUrl: string
-  backendUrl: string
+  notificationBaseUrl: string
   orderExpiration?: string
 }
 
